@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+.vite/
+*.tsbuildinfo
+# Private parameter presets (internal-only values) must never be committed
+presets/private/
+*.private.json

@@ -179,6 +179,7 @@ export function ParameterEditor() {
             'launch.compute.scaleOutPerSec',
             'launch.compute.coldStartMs',
             'launch.compute.idleScaleToZeroSec',
+            'launch.compute.scaleInDelaySec',
             'launch.compute.timeoutSec',
             'launch.compute.maxQueue',
           ]}

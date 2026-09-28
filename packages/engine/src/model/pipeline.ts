@@ -280,6 +280,7 @@ export function runSimulation(scenario: Scenario, opts: RunOptions = {}): Simula
     scaleOutPerSec: cc.scaleOutPerSec,
     coldStartMs: cc.coldStartMs,
     idleScaleToZeroSec: cc.idleScaleToZeroSec,
+    scaleInDelaySec: cc.scaleInDelaySec,
     timeoutSec: cc.timeoutSec,
     maxQueue: cc.maxQueue,
     dtSec: dt,

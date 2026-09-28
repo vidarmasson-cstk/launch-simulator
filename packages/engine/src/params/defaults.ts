@@ -44,6 +44,7 @@ export const DEFAULTS = {
       scaleOutPerSec: 100,
       coldStartMs: 1500,
       idleScaleToZeroSec: 900,
+      scaleInDelaySec: 60,
       timeoutSec: 30,
       maxQueue: 10000,
     },

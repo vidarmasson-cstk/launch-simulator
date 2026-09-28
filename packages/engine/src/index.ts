@@ -21,8 +21,6 @@ export { EventTimeline } from './model/events';
 export { LatencyHistogram } from './model/latency';
 export { runSimulation } from './model/pipeline';
 export { MetricsCollector } from './model/metrics';
-export { steadyState } from './analytic/steadyState';
-export { analyzeFindings } from './findings';
 export { computeSteadyState, countTail, erlangC, smallestLimit } from './analytic/steadyState';
 export type { Hop, HopId, SteadyStateKpis, SteadyStateResult } from './analytic/steadyState';
 export { generateFindings, applyPatch } from './findings';

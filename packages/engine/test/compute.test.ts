@@ -10,6 +10,7 @@ const base: ComputeConfig = {
   scaleOutPerSec: 100,
   coldStartMs: 1500,
   idleScaleToZeroSec: 900,
+  scaleInDelaySec: 60,
   timeoutSec: 30,
   maxQueue: 1000,
   dtSec: 1,
@@ -109,7 +110,12 @@ describe('ComputeModel', () => {
   });
 
   it('scales to min after idleScaleToZeroSec', () => {
-    const m = new ComputeModel({ ...base, idleScaleToZeroSec: 100, minInstances: 0 });
+    const m = new ComputeModel({
+      ...base,
+      idleScaleToZeroSec: 100,
+      scaleInDelaySec: 1e9,
+      minInstances: 0,
+    });
     m.warmStart(5);
     m.step(0, 2, 500);
     let r = m.step(1, 0, 500);
@@ -117,6 +123,42 @@ describe('ComputeModel', () => {
     expect(r.readyInstances).toBe(5);
     for (let t = 90; t < 105; t++) r = m.step(t, 0, 500);
     expect(r.readyInstances).toBe(0);
+  });
+
+  it('scales in gradually after a burst, after scaleInDelaySec', () => {
+    const m = new ComputeModel({
+      ...base,
+      minInstances: 2,
+      scaleOutPerSec: 5,
+      scaleInDelaySec: 30,
+      idleScaleToZeroSec: 1e9,
+    });
+    m.warmStart(100);
+    const lambda = 10;
+    const S = 1000; // steady need: 10 in flight
+    let r = m.step(0, lambda, S);
+    const at: number[] = [];
+    for (let t = 1; t <= 80; t++) {
+      r = m.step(t, lambda, S);
+      at.push(r.readyInstances);
+    }
+    // Held through the delay, then decays no faster than scaleOutPerSec x dt per tick.
+    expect(at[20]).toBe(100);
+    expect(at[40]).toBeLessThan(100);
+    for (let i = 1; i < at.length; i++) expect(at[i - 1]! - at[i]!).toBeLessThanOrEqual(5 + 1e-9);
+    expect(at[at.length - 1]).toBeLessThan(at[40]!);
+    for (let t = 81; t <= 200; t++) r = m.step(t, lambda, S);
+    expect(r.readyInstances).toBeGreaterThanOrEqual(10);
+    expect(r.readyInstances).toBeLessThan(15);
+    expect(r.queue).toBe(0);
+  });
+
+  it('does not scale in while demand keeps instances needed', () => {
+    const m = new ComputeModel({ ...base, minInstances: 0, scaleInDelaySec: 10 });
+    m.warmStart(10);
+    let r = m.step(0, 10, 1000);
+    for (let t = 1; t < 100; t++) r = m.step(t, 10, 1000);
+    expect(r.readyInstances).toBeGreaterThanOrEqual(10);
   });
 
   it('reset clears state and brings minInstances back cold', () => {

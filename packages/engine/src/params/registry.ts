@@ -240,6 +240,10 @@ export const PARAMS: ParamMeta[] = [
     min: 0,
     step: 30,
   }),
+  assumed('launch.compute.scaleInDelaySec', 'Scale-in delay', 's', NOT_PUBLIC, {
+    min: 0,
+    step: 15,
+  }),
   p('launch.compute.timeoutSec', 'Request timeout', 's', 'documented', ['launch-platform-limits'], {
     min: 1,
     step: 1,

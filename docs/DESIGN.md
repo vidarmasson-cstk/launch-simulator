@@ -467,3 +467,13 @@ The coding agents implement to this spec. Each wave is reviewed before the next 
    - (A) shell, store, editor and the provenance UI;
    - (B) worker, charts, flow diagram, compare and findings views.
 5. **Wave 5.** Integration, calibration, performance, README, and a review pass.
+
+## Implementation notes (v1)
+
+Behaviour that differs from, or adds to, the sections above.
+
+- **Background publishing.** `steady.publishesPerHour` and `steady.entriesPerPublish` feed the analytic view as before. With `steady.inTimeline` (default true) the timeline also runs them as evenly spaced publish events, the first at half an interval. They purge CMS caches only (`onPublish: 'none'`): no Launch revalidation, no redeploy.
+- **Compute scale-in (§6.5).** Besides idle scale-to-zero, ready instances retire gradually. When `ready` exceeds `desired` (defined as for scale-out, clamped to `minInstances`) continuously for `launch.compute.scaleInDelaySec` (default 60 s, an assumption), the excess retires at up to `scaleOutPerSec·dt` per tick. Instance counts stay fluid. Idle scale-to-zero (`idleScaleToZeroSec`) still applies on top.
+- **Warm start.** `sim.warmHistorySec` (default 3600 s) is the time since the last purge or deploy. Unless a `goLive` event sits at t = 0, every cache layer starts pre-warmed as if it had run for that long, and compute starts with the instances the initial load needs. Set it to 0 for a cold start.
+- **Empty seconds.** Hit-ratio series (`launchHitRatio`, `cmsCdnHitRatio`) are NaN for seconds without layer requests, so charts show a gap instead of a false 0% or 100%. The web app averages over defined values only when downsampling.
+- **Findings severity.** `critical` means visitors saw errors (429/503/504, error pages) or a limit is exceeded. `warning` means risk, near-limit or latency (for example queueing without 503/504 and below 100% utilisation).

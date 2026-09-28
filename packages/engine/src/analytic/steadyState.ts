@@ -644,27 +644,3 @@ function fmt(x: number): string {
   if (Math.abs(x) >= 10) return x.toFixed(1);
   return x.toFixed(2);
 }
-
-/** Legacy shape: the timeline SummaryKpis fields that the analytic model can fill. */
-export function steadyState(scenario: Scenario): SummaryKpis {
-  const { kpis: k } = computeSteadyState(scenario);
-  return {
-    peakLaunchOriginRps: k.launchOriginRps,
-    peakLaunchOriginPctOfLimit: k.launchUtilPct,
-    secondsOverLaunchLimit: k.expectedLaunch429SecondsPerHour / 3600,
-    peakCmsOriginOfferedRps: k.cmsOriginRps,
-    peakCmsOriginPctOfLimit: k.cmsUtilPct,
-    secondsWithCms429: k.expectedCms429SecondsPerHour / 3600,
-    totalLaunch429: 0,
-    totalCms429: 0,
-    total504: 0,
-    total503: 0,
-    errorPagesServed: 0,
-    visitorErrorRate: 0,
-    worstSecondVisitorP95Ms: 0,
-    cmsCallsPerPageView: k.cmsCallsPerPageView,
-    suggestedCmsLimitRps: k.suggestedCmsLimitRps,
-    projectedMonthlyApiCalls: k.projectedMonthlyApiCalls,
-    bottleneck: k.bottleneck,
-  };
-}

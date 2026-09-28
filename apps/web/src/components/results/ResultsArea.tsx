@@ -1,14 +1,26 @@
-import { useMemo, useRef, type KeyboardEvent } from 'react';
+import { lazy, Suspense, useMemo, useRef, type KeyboardEvent } from 'react';
 import { useAppStore } from '../../state/store';
 import type { ResultsTab } from '../../state/types';
-import { ComparePanel } from './ComparePanel';
 import { FindingsPanel } from './FindingsPanel';
 import { FlowDiagram } from './FlowDiagram';
 import { hopsAtSecond } from './flowHops';
 import { fmtClock } from './format';
 import { useHoverStore } from './hover';
 import { SteadyStatePanel } from './SteadyStatePanel';
-import { TimelinePanel } from './TimelinePanel';
+
+// Recharts-heavy panels load on demand so the initial chunk stays small.
+const TimelinePanel = lazy(() => import('./TimelinePanel').then((m) => ({ default: m.TimelinePanel })));
+const ComparePanel = lazy(() => import('./ComparePanel').then((m) => ({ default: m.ComparePanel })));
+
+function PanelSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-label="Loading view"
+      className="h-64 animate-pulse rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-800/50"
+    />
+  );
+}
 
 const TABS: Array<{ id: ResultsTab; label: string }> = [
   { id: 'steady', label: 'Steady state' },
@@ -105,10 +117,16 @@ function Panel() {
   );
   switch (tab) {
     case 'timeline':
-      return <TimelinePanel result={result} stale={stale} runStatus={runStatus} onRun={run} />;
+      return (
+        <Suspense fallback={<PanelSkeleton />}>
+          <TimelinePanel result={result} stale={stale} runStatus={runStatus} onRun={run} />
+        </Suspense>
+      );
     case 'compare':
       return (
-        <ComparePanel saved={saved} compareIds={compareIds} onChangeIds={setCompareIds} onSave={() => saveCurrent()} />
+        <Suspense fallback={<PanelSkeleton />}>
+          <ComparePanel saved={saved} compareIds={compareIds} onChangeIds={setCompareIds} onSave={() => saveCurrent()} />
+        </Suspense>
       );
     case 'findings':
       return <FindingsPanel findings={findings} onApply={applyPatch} />;

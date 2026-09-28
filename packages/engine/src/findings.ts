@@ -4,15 +4,10 @@ import type {
   FindingSeverity,
   ScenarioPatch,
   SimulationResult,
-  SummaryKpis,
 } from './model/types';
 import { resolveFramework } from './params/frameworks';
 import { setByPath } from './params/registry';
-import {
-  computeSteadyState,
-  type SteadyStateKpis,
-  type SteadyStateResult,
-} from './analytic/steadyState';
+import type { SteadyStateKpis, SteadyStateResult } from './analytic/steadyState';
 
 /**
  * Rule-based diagnostics and recommendations (DESIGN 6.10).
@@ -44,11 +39,6 @@ export function applyPatch<T extends ScenarioInput>(scenario: T, patch: Scenario
     out = { ...out, events: [...(out.events ?? []), ...patch.addEvents] };
   }
   return out as T;
-}
-
-/** Legacy entry point: findings from the analytic model plus a timeline summary (unused). */
-export function analyzeFindings(scenario: Scenario, _summary?: SummaryKpis): Finding[] {
-  return generateFindings(scenario, computeSteadyState(scenario));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -472,7 +462,9 @@ function ruleCompute(ctx: Ctx): void {
   const saturated = st.computeUtilPct >= 100 || st.erlangCWait >= 0.5;
   const busy = st.computeUtilPct >= 70;
   if (!timeline && !slow && !saturated && !busy) return;
-  const critical = timeline || saturated || st.serviceMs / 1000 > comp.timeoutSec;
+  // Critical only when visitors saw 504/503 or a limit is exceeded; queueing alone is a warning.
+  const critical =
+    errors504 + errors503 > 0 || st.computeUtilPct >= 100 || st.serviceMs / 1000 > comp.timeoutSec;
   const parts: string[] = [];
   if (sim && timeline) {
     parts.push(`${f0(errors504)} timeouts (504), ${f0(errors503)} shed requests (503) and a peak queue of ${f0(queueMax)}`);

@@ -12,8 +12,9 @@ const EPS = 1e-9;
  *   uniform on [0, queueWaitMs]; the share with wait + S > timeout counts as 504 (still rendered,
  *   so it still occupies its slot and consumes CMS calls).
  * - Renders with S > timeout occupy a slot until the timeout and all count as 504.
- * - No gradual scale-in: instances stay until idleScaleToZeroSec of continuous idleness, then drop
- *   straight to minInstances.
+ * - Scale-in: once ready instances exceed `desired` (same definition as scale-out, clamped to
+ *   minInstances) continuously for scaleInDelaySec, the excess retires at up to scaleOutPerSec x dt
+ *   per tick. Idle scale-to-zero (idleScaleToZeroSec) still drops straight to minInstances.
  * - Instance counts are fluid (fractional).
  */
 export class ComputeModel implements IComputeModel {
@@ -29,6 +30,7 @@ export class ComputeModel implements IComputeModel {
   private inFlight = 0;
   private queue = 0;
   private idleSec = 0;
+  private excessSec = 0;
   private lastTick = -1;
 
   constructor(config: ComputeConfig) {
@@ -146,6 +148,14 @@ export class ComputeModel implements IComputeModel {
         this.provisioning += add;
       }
     }
+    if (this.ready > desired + EPS) {
+      this.excessSec += dt;
+      if (this.excessSec >= c.scaleInDelaySec) {
+        this.ready -= Math.min(this.ready - desired, c.scaleOutPerSec * dt);
+      }
+    } else {
+      this.excessSec = 0;
+    }
     if (acceptedArrivals > 0 || this.inFlight > 0 || this.queue > 0) {
       this.idleSec = 0;
     } else {
@@ -173,6 +183,7 @@ export class ComputeModel implements IComputeModel {
     this.inFlight = 0;
     this.queue = 0;
     this.idleSec = 0;
+    this.excessSec = 0;
     this.ready = 0;
     this.provisioning = 0;
     if (this.cfg.minInstances > 0) {

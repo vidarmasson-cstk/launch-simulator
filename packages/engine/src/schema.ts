@@ -182,6 +182,7 @@ const LaunchSchema = z.object({
       scaleOutPerSec: z.number().min(0).default(D.launch.compute.scaleOutPerSec),
       coldStartMs: z.number().min(0).default(D.launch.compute.coldStartMs),
       idleScaleToZeroSec: z.number().min(0).default(D.launch.compute.idleScaleToZeroSec),
+      scaleInDelaySec: z.number().min(0).default(D.launch.compute.scaleInDelaySec),
       timeoutSec: z.number().positive().default(D.launch.compute.timeoutSec),
       maxQueue: z.number().min(0).default(D.launch.compute.maxQueue),
     })

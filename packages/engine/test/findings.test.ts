@@ -291,6 +291,21 @@ describe('generateFindings', () => {
     expect(g.detail).toMatch(/120 timeouts/);
   });
 
+  it('compute queueing alone is a warning; errors or saturation are critical', () => {
+    const queueing = find(run(QUIET, fakeSim(100, { queue: () => 50 })), 'compute-saturation');
+    expect(queueing.severity).toBe('warning');
+    const withErrors = find(
+      run(QUIET, fakeSim(100, { queue: () => 50 }, [], { total503: 5 })),
+      'compute-saturation',
+    );
+    expect(withErrors.severity).toBe('critical');
+    const with504 = find(
+      run(QUIET, fakeSim(100, { queue: () => 50 }, [], { total504: 1 })),
+      'compute-saturation',
+    );
+    expect(with504.severity).toBe('critical');
+  });
+
   it('revalidation calls over the daily quota', () => {
     const input: ScenarioInput = {
       ...QUIET,

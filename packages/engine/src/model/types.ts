@@ -152,6 +152,7 @@ export interface ComputeConfig {
   scaleOutPerSec: number;
   coldStartMs: number;
   idleScaleToZeroSec: number;
+  scaleInDelaySec: number;
   timeoutSec: number;
   maxQueue: number;
   dtSec: number;

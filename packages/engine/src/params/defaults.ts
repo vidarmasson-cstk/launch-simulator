@@ -7,7 +7,7 @@ import type { Scenario } from '../schema';
 export const DEFAULTS = {
   schemaVersion: 1,
   name: 'Untitled scenario',
-  sim: { durationSec: 1800, dtSec: 0.1, seed: 1, stochastic: true, burstiness: null },
+  sim: { durationSec: 1800, dtSec: 0.1, seed: 1, stochastic: true, burstiness: null, warmHistorySec: 3600 },
   traffic: {
     baseEdgeRps: 100,
     profile: 'flat',

@@ -112,6 +112,8 @@ const SimSchema = z.object({
   stochastic: z.boolean().default(D.sim.stochastic),
   /** NegBin dispersion k; null = Poisson. */
   burstiness: z.number().positive().nullable().default(D.sim.burstiness),
+  /** Assumed time since the last full purge/deploy at t = 0; sets the initial (warm) cache state. */
+  warmHistorySec: z.number().min(0).default(D.sim.warmHistorySec),
 });
 
 const TrafficSchema = z.object({

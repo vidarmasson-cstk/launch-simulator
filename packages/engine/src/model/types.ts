@@ -265,9 +265,17 @@ export interface SummaryKpis {
   bottleneck: 'none' | 'launchOrigin' | 'compute' | 'cmsOrigin' | 'timeout';
 }
 
+export interface SimulationMarker {
+  timeSec: number;
+  kind: string;
+  label: string;
+}
+
 export interface SimulationResult {
   series: MetricsSeries;
   summary: SummaryKpis;
+  /** One marker per scenario event, for chart annotations. */
+  markers: SimulationMarker[];
 }
 
 // ---- Findings ----

@@ -116,6 +116,10 @@ export const PARAMS: ParamMeta[] = [
   input('sim.seed', 'Random seed', '', { step: 1 }),
   input('sim.stochastic', 'Stochastic arrivals', 'bool'),
   input('sim.burstiness', 'Burstiness (NegBin k; null = Poisson)', '', { min: 0.01, step: 0.1 }),
+  input('sim.warmHistorySec', 'Warm-cache history (time since last purge/deploy)', 's', {
+    min: 0,
+    step: 600,
+  }),
 
   // traffic
   input('traffic.baseEdgeRps', 'Human page views', 'req/s', { min: 0, step: 1 }),

@@ -349,6 +349,30 @@ export class CacheLayer implements ICacheLayer {
     }
   }
 
+  /**
+   * Initial warm state (call before the first `step`). `lambdaPerBin` is the layer's request rate
+   * per bin (req/s, summed over domains), `historySec` the assumed time since the last full purge.
+   * Finite TTL T: per-bin fresh fraction r*T/(1+r*T) (r = per-key rate), spread uniformly over ages
+   * [0, T); the rest is empty (no stale). Infinite TTL: fresh = 1 - exp(-r * historySec).
+   * With a TTL beyond the run duration (scalar state) the fresh fraction never expires.
+   */
+  warm(lambdaPerBin: Float64Array, historySec: number): void {
+    const { B, Lf } = this;
+    const ttl = this.cfg.ttlSec;
+    for (let b = 0; b < B; b++) {
+      const r = (lambdaPerBin[b] ?? 0) / this.N[b]!;
+      let f = 0;
+      if (r > 0) {
+        if (!Number.isFinite(ttl)) f = -Math.expm1(-r * Math.max(0, historySec));
+        else f = (r * ttl) / (1 + r * ttl);
+      }
+      f = Math.min(1, Math.max(0, f));
+      if (Lf > 0) this.fresh.fill(f / Lf, b * Lf, (b + 1) * Lf);
+      this.freshSum[b] = f;
+      this.empty[b] = 1 - f;
+    }
+  }
+
   purge(fraction: number | Float64Array): void {
     const { B, Lf, Ls } = this;
     for (let b = 0; b < B; b++) {

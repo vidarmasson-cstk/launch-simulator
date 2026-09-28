@@ -302,11 +302,14 @@ export const useAppStore = create<AppState>()((set, get) => {
           const findings = same(cur.scenario, scenario)
             ? generateFindings(scenario, steady, m.result)
             : cur.findings;
+          // Saved scenarios identical to the one just run get its timeline, so Compare can show it.
+          const saved = cur.saved.map((e) => (same(e.scenario, scenario) ? { ...e, result: m.result } : e));
           set({
             result: m.result,
             resultScenario: scenario,
             runStatus: { state: 'done', ms: m.ms },
             findings,
+            saved,
           });
           killWorker();
         } else {

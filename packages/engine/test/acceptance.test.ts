@@ -49,9 +49,19 @@ describe('acceptance: architect questions (RESEARCH section 4)', () => {
   // slightly from about 430 s on (0.57 vs 0.54 at 430 s). Kept as a todo instead of tuning the model.
   it.todo('How much does cache priming help on a deploy at peak? (lower peak origin or worst p95)');
 
-  // Observed (strict-window-spiky, exponentialJitter base 200 ms cap 5000 vs sdkDefault): jitter
-  // gives MORE CMS 429s (9819 vs 5903) and more error pages (2648 vs 932). Its first retries come
-  // sooner than the SDK default's delay, so more attempts land in the still-saturated fixed window.
-  // Kept as a todo instead of tuning the model.
-  it.todo('Does exponential backoff with jitter help versus the SDK default? (fewer or equal CMS 429s)');
+  // Which retry policy helps? Under a strict 1 s window, retries that return within the window are
+  // rejected again. Observed: jittered backoff from 200 ms or 1 s gives MORE error pages than the SDK
+  // default on these templates (e.g. 2648 vs 932), while few retries starting at >= 1 s never do
+  // worse. Retry comparisons are approximate in v1 (render failure uses same-tick p429).
+  it('Which retry policy helps? Few retries starting after one window beat the SDK default', () => {
+    const retry = { kind: 'exponential', retries: 2, baseDelayMs: 1000, capDelayMs: 4000 } as const;
+    for (const id of ['strict-window-spiky', 'bulk-publish-at-peak']) {
+      const base = template(id);
+      const tuned = template(id);
+      tuned.sdk = { ...(tuned.sdk ?? {}), retry };
+      expect(simulate(tuned).summary.errorPagesServed).toBeLessThanOrEqual(
+        simulate(base).summary.errorPagesServed,
+      );
+    }
+  });
 });

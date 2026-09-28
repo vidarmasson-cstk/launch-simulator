@@ -72,7 +72,10 @@ function expectPatchesValid(input: ScenarioInput, fs: RuleFinding[]) {
 }
 
 const QUIET: ScenarioInput = {
-  traffic: { baseEdgeRps: 100, bots: { share: 0.01, randomQueryFraction: 0, notFoundFraction: 0.001 } },
+  traffic: {
+    baseEdgeRps: 100,
+    bots: { share: 0.01, randomQueryFraction: 0, notFoundFraction: 0.001 },
+  },
   site: {
     frameworkOverrides: { clientNavFraction: 0, prefetchPerView: 0 },
     cacheHeaders: { page: { cacheable: true, sMaxAgeSec: 3600, swrSec: 86400 } },
@@ -128,16 +131,19 @@ describe('generateFindings', () => {
           atSec: 300,
           entries: 500,
           spreadSec: 0,
-          purge: { pageQueries: true, contentTypeLists: true, referencingFraction: 0.3, globals: true },
+          purge: {
+            pageQueries: true,
+            contentTypeLists: true,
+            referencingFraction: 0.3,
+            globals: true,
+          },
           onPublish: 'revalidatePaths',
         },
       ],
     };
-    const sim = fakeSim(
-      900,
-      { cms429: (t) => (t >= 300 && t < 340 ? 50 : t === 700 ? 1 : 0) },
-      [{ timeSec: 300, kind: 'publish', label: 'Publish 500' }],
-    );
+    const sim = fakeSim(900, { cms429: (t) => (t >= 300 && t < 340 ? 50 : t === 700 ? 1 : 0) }, [
+      { timeSec: 300, kind: 'publish', label: 'Publish 500' },
+    ]);
     const fs = run(input, sim);
     const f = find(fs, 'cms-429-after-publish');
     expect(f.severity).toBe('critical');
@@ -161,7 +167,10 @@ describe('generateFindings', () => {
 
   it('purge-driven misses share a busy CMS budget (steady state)', () => {
     const input: ScenarioInput = {
-      traffic: { baseEdgeRps: 1000, bots: { share: 0, randomQueryFraction: 0, notFoundFraction: 0 } },
+      traffic: {
+        baseEdgeRps: 1000,
+        bots: { share: 0, randomQueryFraction: 0, notFoundFraction: 0 },
+      },
       site: {
         pages: 100,
         locales: 1,
@@ -172,7 +181,12 @@ describe('generateFindings', () => {
       steady: {
         publishesPerHour: 3600,
         entriesPerPublish: 50,
-        purge: { pageQueries: true, contentTypeLists: true, referencingFraction: 0.5, globals: true },
+        purge: {
+          pageQueries: true,
+          contentTypeLists: true,
+          referencingFraction: 0.5,
+          globals: true,
+        },
       },
     };
     const fs = run(input);
@@ -184,7 +198,10 @@ describe('generateFindings', () => {
   it('deploy at peak without priming -> priming patch', () => {
     const input: ScenarioInput = {
       ...QUIET,
-      traffic: { baseEdgeRps: 4000, bots: { share: 0.01, randomQueryFraction: 0, notFoundFraction: 0 } },
+      traffic: {
+        baseEdgeRps: 4000,
+        bots: { share: 0.01, randomQueryFraction: 0, notFoundFraction: 0 },
+      },
       events: [{ kind: 'deploy', atSec: 300, buildSec: 120 }],
     };
     const fs = run(input);
@@ -206,22 +223,26 @@ describe('generateFindings', () => {
     expect(f.suggestion).toBeUndefined(); // nothing to patch for a bare go-live
   });
 
-  it('fixed / sdkDefault retries with CMS 429s -> exponential jitter', () => {
-    for (const kind of ['fixed', 'sdkDefault'] as const) {
+  it('aggressive retries with CMS 429s -> few retries starting after one window', () => {
+    for (const kind of ['fixed', 'sdkDefault', 'exponentialJitter'] as const) {
       const input: ScenarioInput = {
         ...QUIET,
         cms: { otherOrgTrafficRps: 150 },
         sdk: { retry: { kind } },
       };
       const fs = run(input);
-      const f = find(fs, 'retry-without-jitter');
-      expect(f.suggestion!.set['sdk.retry.kind']).toBe('exponentialJitter');
-      expect(f.suggestion!.set['sdk.retry.baseDelayMs']).toBe(200);
+      const f = find(fs, 'retry-amplifies-429s');
+      expect(f.suggestion!.set['sdk.retry.kind']).toBe('exponential');
+      expect(f.suggestion!.set['sdk.retry.baseDelayMs']).toBe(1000);
       expectPatchesValid(input, fs);
     }
-    // Jittered retries are fine.
-    const ok = run({ ...QUIET, cms: { otherOrgTrafficRps: 150 }, sdk: { retry: { kind: 'exponentialJitter' } } });
-    expect(ok.some((f) => f.id === 'retry-without-jitter')).toBe(false);
+    // The suggested shape does not fire again.
+    const ok = run({
+      ...QUIET,
+      cms: { otherOrgTrafficRps: 150 },
+      sdk: { retry: { kind: 'exponential', retries: 2, baseDelayMs: 1000, capDelayMs: 4000 } },
+    });
+    expect(ok.some((f) => f.id === 'retry-amplifies-429s')).toBe(false);
   });
 
   it('many global calls with a low CMS hit ratio', () => {
@@ -235,7 +256,10 @@ describe('generateFindings', () => {
   it('bot-unique and 404 traffic above 20% of origin load', () => {
     const input: ScenarioInput = {
       ...QUIET,
-      traffic: { baseEdgeRps: 300, bots: { share: 0.5, randomQueryFraction: 0.6, notFoundFraction: 0.2 } },
+      traffic: {
+        baseEdgeRps: 300,
+        bots: { share: 0.5, randomQueryFraction: 0.6, notFoundFraction: 0.2 },
+      },
     };
     const fs = run(input);
     const f = find(fs, 'bot-unique-origin-load');
@@ -246,7 +270,16 @@ describe('generateFindings', () => {
   it('crawler event counts towards the bot origin share', () => {
     const input: ScenarioInput = {
       ...QUIET,
-      events: [{ kind: 'crawler', atSec: 300, durationSec: 600, rps: 150, randomQueryFraction: 0.8, notFoundFraction: 0.1 }],
+      events: [
+        {
+          kind: 'crawler',
+          atSec: 300,
+          durationSec: 600,
+          rps: 150,
+          randomQueryFraction: 0.8,
+          notFoundFraction: 0.1,
+        },
+      ],
     };
     const fs = run(input);
     const f = find(fs, 'bot-unique-origin-load');
@@ -310,7 +343,9 @@ describe('generateFindings', () => {
     const input: ScenarioInput = {
       ...QUIET,
       launch: { ...QUIET.launch, revalidation: { dailyQuota: 500 } },
-      events: [{ kind: 'publish', atSec: 10, entries: 600, spreadSec: 0, onPublish: 'revalidatePaths' }],
+      events: [
+        { kind: 'publish', atSec: 10, entries: 600, spreadSec: 0, onPublish: 'revalidatePaths' },
+      ],
     };
     const fs = run(input);
     const f = find(fs, 'revalidation-quota');
@@ -335,7 +370,9 @@ describe('generateFindings', () => {
     const patched = ScenarioSchema.parse(applyPatch(input, f.suggestion!));
     expect(patched.events).toHaveLength(0);
     expect(patched.cms.otherOrgTrafficRps).toBe(0);
-    expect(run({ ...QUIET, cms: { otherOrgTrafficRps: 10 } }).some((x) => x.id === 'other-org-traffic')).toBe(false);
+    expect(
+      run({ ...QUIET, cms: { otherOrgTrafficRps: 10 } }).some((x) => x.id === 'other-org-traffic'),
+    ).toBe(false);
   });
 
   it('CMS limit: suggests a limit above the offered load', () => {
@@ -345,12 +382,16 @@ describe('generateFindings', () => {
     const suggested = f.suggestion!.set['cms.cda.limitRps'] as number;
     expect(suggested).toBeGreaterThanOrEqual(95);
     expectPatchesValid(input, fs);
-    expect(run(applyPatch(input, f.suggestion!)).some((x) => x.id === 'cms-origin-limit')).toBe(false);
+    expect(run(applyPatch(input, f.suggestion!)).some((x) => x.id === 'cms-origin-limit')).toBe(
+      false,
+    );
   });
 
   it('graphql scenarios patch the graphql limiter', () => {
     const fs = run({ ...QUIET, cms: { api: 'graphql', otherOrgTrafficRps: 95 } });
-    expect(Object.keys(find(fs, 'cms-origin-limit').suggestion!.set)[0]).toBe('cms.graphql.limitRps');
+    expect(Object.keys(find(fs, 'cms-origin-limit').suggestion!.set)[0]).toBe(
+      'cms.graphql.limitRps',
+    );
   });
 
   it('Launch origin limit and data request amplification', () => {

@@ -219,7 +219,7 @@ export function ParameterEditor() {
       </Section>
       <Section title="Events" defaultOpen>
         <EventsEditor />
-        <Sub>Steady-state publishing (analytic view only)</Sub>
+        <Sub>Background publishing (steady state and timeline)</Sub>
         <Fields
           paths={[
             'steady.publishesPerHour',

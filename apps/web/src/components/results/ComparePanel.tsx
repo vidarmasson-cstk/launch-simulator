@@ -53,7 +53,9 @@ export function bestWorst(values: Array<number | string | undefined>, better?: '
   if (!better || defined.length < 2) return out;
   const lo = Math.min(...defined);
   const hi = Math.max(...defined);
-  if (lo === hi) return out;
+  // Only highlight meaningful differences: at least 5% relative and above a small absolute floor
+  // (so 52% vs 52% or 0.00004 vs 0 probabilities are not called best/worst).
+  if (hi - lo <= Math.max(0.05 * Math.max(Math.abs(hi), Math.abs(lo)), 1e-3)) return out;
   const bestV = better === 'lower' ? lo : hi;
   const worstV = better === 'lower' ? hi : lo;
   nums.forEach((v, i) => {

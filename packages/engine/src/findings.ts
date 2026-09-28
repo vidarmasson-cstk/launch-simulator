@@ -1,10 +1,5 @@
 import type { Scenario, ScenarioEvent, ScenarioInput } from './schema';
-import type {
-  Finding,
-  FindingSeverity,
-  ScenarioPatch,
-  SimulationResult,
-} from './model/types';
+import type { Finding, FindingSeverity, ScenarioPatch, SimulationResult } from './model/types';
 import { resolveFramework } from './params/frameworks';
 import { setByPath } from './params/registry';
 import type { SteadyStateKpis, SteadyStateResult } from './analytic/steadyState';
@@ -48,7 +43,8 @@ export function applyPatch<T extends ScenarioInput>(scenario: T, patch: Scenario
 const f0 = (x: number) => (Number.isFinite(x) ? Math.round(x).toLocaleString('en-US') : String(x));
 const f1 = (x: number) => (Number.isFinite(x) ? x.toFixed(1) : String(x));
 const pct = (x: number) => `${f0(x)}%`;
-const rps = (x: number) => (x >= 100 ? `${f0(x)} req/s` : x >= 10 ? `${f1(x)} req/s` : `${x.toFixed(2)} req/s`);
+const rps = (x: number) =>
+  x >= 100 ? `${f0(x)} req/s` : x >= 10 ? `${f1(x)} req/s` : `${x.toFixed(2)} req/s`;
 
 function column(sim: SimulationResult | undefined, name: string): Float32Array | undefined {
   const c = sim?.series?.columns?.[name];
@@ -145,12 +141,16 @@ function add(ctx: Ctx, f: RuleFinding): void {
 
 /** Evidence that the CMS limiter rejects requests: timeline totals or the analytic tail. */
 function cms429Evidence(ctx: Ctx): boolean {
-  return ctx.cms429Total > 0 || ctx.st.expectedCms429SecondsPerHour >= 1 || ctx.st.cmsUtilPct >= 100;
+  return (
+    ctx.cms429Total > 0 || ctx.st.expectedCms429SecondsPerHour >= 1 || ctx.st.cmsUtilPct >= 100
+  );
 }
 
 function launch429Evidence(ctx: Ctx): boolean {
   return (
-    ctx.launch429Total > 0 || ctx.st.expectedLaunch429SecondsPerHour >= 1 || ctx.st.launchUtilPct >= 100
+    ctx.launch429Total > 0 ||
+    ctx.st.expectedLaunch429SecondsPerHour >= 1 ||
+    ctx.st.launchUtilPct >= 100
   );
 }
 
@@ -204,7 +204,9 @@ function ruleDataAmplification(ctx: Ctx): void {
 }
 
 function publishEvents(sc: Scenario): Extract<ScenarioEvent, { kind: 'publish' }>[] {
-  return sc.events.filter((e): e is Extract<ScenarioEvent, { kind: 'publish' }> => e.kind === 'publish');
+  return sc.events.filter(
+    (e): e is Extract<ScenarioEvent, { kind: 'publish' }> => e.kind === 'publish',
+  );
 }
 
 function ruleCms429AfterPublish(ctx: Ctx): void {
@@ -233,7 +235,12 @@ function ruleCms429AfterPublish(ctx: Ctx): void {
   }
 
   // Steady state: purge-driven misses use a large share of an already busy budget.
-  if (!fired && st.cmsPurgeOriginRps >= 0.3 * st.cmsOriginRps && st.cmsUtilPct >= 70 && st.cmsPurgeOriginRps > 0) {
+  if (
+    !fired &&
+    st.cmsPurgeOriginRps >= 0.3 * st.cmsOriginRps &&
+    st.cmsUtilPct >= 70 &&
+    st.cmsPurgeOriginRps > 0
+  ) {
     fired = true;
     critical = st.cmsUtilPct >= 100 || st.expectedCms429SecondsPerHour >= 1;
     measured =
@@ -270,7 +277,11 @@ function ruleCms429AfterPublish(ctx: Ctx): void {
         : {
             ...e,
             spreadSec: Math.max(e.spreadSec, Math.min(900, Math.ceil(e.entries / 5))),
-            purge: { ...e.purge, globals: false, referencingFraction: Math.min(e.purge.referencingFraction, 0.1) },
+            purge: {
+              ...e.purge,
+              globals: false,
+              referencingFraction: Math.min(e.purge.referencingFraction, 0.1),
+            },
             onPublish: e.onPublish === 'redeploy' ? 'revalidateTags' : e.onPublish,
           },
     );
@@ -353,23 +364,26 @@ function ruleDeployAtPeak(ctx: Ctx): void {
 
 function ruleRetry(ctx: Ctx): void {
   const { sc, st } = ctx;
-  const kind = sc.sdk.retry.kind;
-  if (kind !== 'fixed' && kind !== 'sdkDefault') return;
+  const { kind, retries, baseDelayMs } = sc.sdk.retry;
+  // Already on the suggested shape: few retries, first one after at least one limiter window.
+  if (kind === 'none' || (retries <= 2 && baseDelayMs >= 1000 && kind !== 'exponentialJitter'))
+    return;
   if (!cms429Evidence(ctx)) return;
   const evidence =
     ctx.cms429Total > 0
       ? `${f0(ctx.cms429Total)} CMS 429s in the timeline`
       : `${f1(st.expectedCms429SecondsPerHour)} expected seconds per hour with 429s`;
   add(ctx, {
-    id: 'retry-without-jitter',
+    id: 'retry-amplifies-429s',
     severity: 'warning',
-    title: 'Fixed-delay retries synchronize into pulses',
-    detail: `The SDK retries with a ${kind === 'sdkDefault' ? 'fixed 300 ms to 1 s' : 'fixed'} delay and no jitter while the CMS returns 429s (${evidence}). Clients that were rejected together retry together and hit the same one-second window again.`,
+    title: 'Retries add load to an exhausted rate-limit window',
+    detail: `While the CMS returns 429s (${evidence}), every rejected call is retried up to ${retries} times. Retries that come back within about a second land in the same exhausted window and are charged to the same org budget, so they crowd out fresh requests. Try fewer retries with a first delay of at least one window (e.g. exponential from 1 s, 2 retries) and compare visitor errors; retry-policy comparisons are approximate in this version.`,
     suggestion: {
       set: {
-        'sdk.retry.kind': 'exponentialJitter',
-        'sdk.retry.baseDelayMs': 200,
-        'sdk.retry.capDelayMs': 5000,
+        'sdk.retry.kind': 'exponential',
+        'sdk.retry.retries': 2,
+        'sdk.retry.baseDelayMs': 1000,
+        'sdk.retry.capDelayMs': 4000,
       },
     },
   });
@@ -467,7 +481,9 @@ function ruleCompute(ctx: Ctx): void {
     errors504 + errors503 > 0 || st.computeUtilPct >= 100 || st.serviceMs / 1000 > comp.timeoutSec;
   const parts: string[] = [];
   if (sim && timeline) {
-    parts.push(`${f0(errors504)} timeouts (504), ${f0(errors503)} shed requests (503) and a peak queue of ${f0(queueMax)}`);
+    parts.push(
+      `${f0(errors504)} timeouts (504), ${f0(errors503)} shed requests (503) and a peak queue of ${f0(queueMax)}`,
+    );
   }
   parts.push(
     `steady state needs ${f0(st.inFlight)} concurrent renders (${f0(st.instancesNeeded)} instances) at ${f0(st.serviceMs)} ms per render, ${pct(st.computeUtilPct)} of capacity`,
@@ -545,9 +561,7 @@ function ruleLaunchLimit(ctx: Ctx): void {
   const bad = launch429Evidence(ctx);
   if (util <= 70 && !bad) return;
   const evidence =
-    ctx.launch429Total > 0
-      ? ` The timeline returned ${f0(ctx.launch429Total)} Launch 429s.`
-      : '';
+    ctx.launch429Total > 0 ? ` The timeline returned ${f0(ctx.launch429Total)} Launch 429s.` : '';
   add(ctx, {
     id: 'launch-origin-limit',
     severity: bad ? 'critical' : 'warning',

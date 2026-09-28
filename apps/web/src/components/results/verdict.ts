@@ -35,6 +35,13 @@ export function steadyVerdict(steady: SteadyStateResult): string {
       ? `Compute is saturated (${fmtPct(k.computeUtilPct)} of capacity); expect queueing and timeouts.`
       : `Compute needs about ${k.instancesNeeded} instances (${fmtPct(k.computeUtilPct)} of capacity).`,
   );
-  if (k.bottleneck !== 'none') parts.push(`First bottleneck: ${BOTTLENECK_LABEL[k.bottleneck]}.`);
+  if (k.bottleneck !== 'none') {
+    const over =
+      k.bottleneck === 'timeout' ||
+      (k.bottleneck === 'launchOrigin' && k.launchUtilPct >= 100) ||
+      (k.bottleneck === 'cmsOrigin' && k.cmsUtilPct >= 100) ||
+      (k.bottleneck === 'compute' && k.computeUtilPct >= 100);
+    parts.push(`${over ? 'Bottleneck' : 'Tightest limit'}: ${BOTTLENECK_LABEL[k.bottleneck]}.`);
+  }
   return parts.join(' ');
 }

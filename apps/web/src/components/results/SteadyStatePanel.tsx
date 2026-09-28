@@ -41,13 +41,13 @@ export function SteadyStatePanel({ steady }: { steady: SteadyStateResult }) {
         <Kpi
           label="P(429 second), CMS"
           value={fmtProb(k.pCms429Second)}
-          sub={`~${fmtSecPerHour(k.expectedCms429SecondsPerHour)} s/hour with 429s`}
+          sub={`${fmtSecPerHour(k.expectedCms429SecondsPerHour)} s/hour with 429s`}
           title="Probability that a given second's CMS origin count exceeds the limit"
         />
         <Kpi
           label="P(429 second), Launch"
           value={fmtProb(k.pLaunch429Second)}
-          sub={`~${fmtSecPerHour(k.expectedLaunch429SecondsPerHour)} s/hour with 429s`}
+          sub={`${fmtSecPerHour(k.expectedLaunch429SecondsPerHour)} s/hour with 429s`}
         />
         <Kpi
           label="Suggested CMS limit"
@@ -63,9 +63,39 @@ export function SteadyStatePanel({ steady }: { steady: SteadyStateResult }) {
         <Kpi
           label="Bottleneck"
           value={BOTTLENECK_LABEL[k.bottleneck]}
-          status={k.bottleneck === 'none' ? undefined : 'crit'}
+          status={bottleneckStatus(k)}
+          sub={bottleneckSub(k)}
         />
       </KpiGrid>
     </div>
   );
+}
+
+/** Over a limit (or timing out) is critical; merely the layer with the most expected 429 seconds is a warning. */
+function bottleneckUtil(k: SteadyStateResult['kpis']): number | null {
+  switch (k.bottleneck) {
+    case 'launchOrigin':
+      return k.launchUtilPct;
+    case 'cmsOrigin':
+      return k.cmsUtilPct;
+    case 'compute':
+      return k.computeUtilPct;
+    default:
+      return null;
+  }
+}
+
+function bottleneckStatus(k: SteadyStateResult['kpis']): 'warn' | 'crit' | undefined {
+  if (k.bottleneck === 'none') return undefined;
+  if (k.bottleneck === 'timeout') return 'crit';
+  const util = bottleneckUtil(k);
+  return util !== null && util >= 100 ? 'crit' : 'warn';
+}
+
+function bottleneckSub(k: SteadyStateResult['kpis']): string | undefined {
+  const util = bottleneckUtil(k);
+  if (util === null) return k.bottleneck === 'timeout' ? 'renders exceed the timeout' : undefined;
+  return util >= 100
+    ? `${fmtPct(util)} of limit`
+    : `${fmtPct(util)} of limit; bursts cause occasional 429s`;
 }

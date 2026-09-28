@@ -107,7 +107,7 @@ function cmsLimitOf(s: Scenario): number {
  *
  * Derived columns: edgeRps is the sum of every edge stream including static assets; launchHitRatio
  * = (hits + stale hits) / requests over the Launch page + data layers only (bypassed classes are not
- * in its denominator; 0 if no layer requests); cmsCdnHitRatio likewise over the CMS CDN layers;
+ * in its denominator; NaN if the second had no layer requests, so charts show a gap); cmsCdnHitRatio likewise over the CMS CDN layers;
  * cmsOriginOffered = new origin fetches + other-org traffic (retries excluded), cmsOriginTotal
  * includes retries; visitorErrors = 5xx + 404 + 429 served to visitors.
  */
@@ -242,7 +242,7 @@ export class MetricsCollector {
     };
     const ratio = (num: Float64Array, den: Float64Array) => {
       const out = new Float64Array(n);
-      for (let i = 0; i < n; i++) out[i] = den[i]! > 0 ? num[i]! / den[i]! : 0;
+      for (let i = 0; i < n; i++) out[i] = den[i]! > 0 ? num[i]! / den[i]! : NaN;
       return out;
     };
 

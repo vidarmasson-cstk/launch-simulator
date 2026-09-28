@@ -67,11 +67,21 @@ export function downsample(
         for (let i = start; i < end; i++) if (col[i]! > m) m = col[i]!;
         row[name] = m;
       } else {
+        // Mean over defined values: ratio columns are NaN for seconds without requests.
         let s = 0;
-        for (let i = start; i < end; i++) s += col[i]!;
-        row[name] = s / (end - start);
+        let k = 0;
+        for (let i = start; i < end; i++) {
+          const v = col[i]!;
+          if (Number.isFinite(v)) {
+            s += v;
+            k++;
+          }
+        }
+        row[name] = k > 0 ? s / k : NaN;
       }
     }
+    // Recharts draws gaps for null, not NaN.
+    for (const name of columns) if (Number.isNaN(row[name])) (row as Record<string, number | null>)[name] = null;
     rows.push(row);
   }
   return rows;

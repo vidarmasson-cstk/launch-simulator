@@ -199,6 +199,30 @@ describe('runSimulation', () => {
     expect(mean(hit, 330, 358)).toBeGreaterThan(0.5); // nothing happens at deploy start (build phase)
   });
 
+  it('deploy priming: origin load before cutover, higher Launch hit ratio right after', () => {
+    const deploy = (priming: { paths: number; rps: number }): ScenarioInput => ({
+      sim: { durationSec: 600 },
+      traffic: { baseEdgeRps: 500 },
+      site: { pages: 5000, locales: 1, frameworkOverrides: PURE_HTML },
+      events: [{ kind: 'deploy', atSec: 300, buildSec: 60, priming }],
+    });
+    const none = run(deploy({ paths: 0, rps: 0 }));
+    const primed = run(deploy({ paths: 1000, rps: 50 })); // window [340, 360)
+    const off0 = none.series.columns.launchOriginOffered!;
+    const off1 = primed.series.columns.launchOriginOffered!;
+    const hit0 = none.series.columns.launchHitRatio!;
+    const hit1 = primed.series.columns.launchHitRatio!;
+    // priming load appears before cutover only
+    expect(mean(off1, 342, 358) - mean(off0, 342, 358)).toBeGreaterThan(30);
+    expect(mean(off1, 320, 338)).toBeCloseTo(mean(off0, 320, 338), 0);
+    // priming does not fill the live cache before cutover
+    expect(mean(hit1, 342, 358)).toBeCloseTo(mean(hit0, 342, 358), 1);
+    const h0 = mean(hit0, 360, 370);
+    const h1 = mean(hit1, 360, 370);
+    console.log(`deploy priming: hit 0-10 s after cutover ${h0.toFixed(3)} -> ${h1.toFixed(3)}`);
+    expect(h1).toBeGreaterThan(h0 + 0.05);
+  });
+
   it('GCRA (burst 200%, maxWait 3 s) gives fewer CMS 429s and higher render p95 than a fixed window', () => {
     const spiky = (cda: Record<string, unknown>): ScenarioInput => ({
       sim: { durationSec: 600 },

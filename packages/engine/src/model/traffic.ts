@@ -17,7 +17,7 @@ export const STATIC_ASSETS_PER_VIEW = 10;
  * load-test requests, and `botPage` / `botUnique` / `notFound` include the crawler's share.
  * `crawler` and `loadTest` are informational "of which" totals so the pipeline can treat them
  * separately (e.g. uniform page popularity for load tests). `priming` is NOT part of any class:
- * it is origin traffic for the top paths.
+ * it is origin-direct render traffic (new deployment) for the top paths, before cutover.
  */
 export interface TrafficBreakdown {
   humanPage: number;

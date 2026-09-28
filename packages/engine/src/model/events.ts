@@ -14,6 +14,7 @@ type LoadTest = Extract<ScenarioEvent, { kind: 'loadTest' }>;
 type Other = Extract<ScenarioEvent, { kind: 'otherTraffic' }>;
 type Publish = Extract<ScenarioEvent, { kind: 'publish' }>;
 
+/** Priming window of one deploy: [startSec, endSec = cutover). `paths` = keys primed by cutover. */
 interface Priming {
   startSec: number;
   endSec: number;
@@ -53,6 +54,8 @@ export class EventTimeline implements IEventTimeline {
   /** Instants that cold-reset and purge launch (deploy completion, redeploy-on-publish). */
   private readonly deployCompletions: number[] = [];
   private readonly primings: Priming[] = [];
+  /** Keys warm in the Launch page cache at the cutover instant (priming of the new deployment). */
+  private readonly primeAtCutover: { at: number; keys: number }[] = [];
   private readonly site: Scenario['site'];
   private readonly cms: Scenario['cms'];
   private readonly pagesTotalKeys: number;
@@ -88,13 +91,19 @@ export class EventTimeline implements IEventTimeline {
         case 'deploy': {
           const done = e.atSec + e.buildSec;
           this.deployCompletions.push(done);
-          if (e.priming.paths > 0 && e.priming.rps > 0) {
+          // Launch primes the listed URLs before the new deployment receives traffic: the window
+          // ends at cutover. If paths/rps exceeds the build time, priming starts at atSec and only
+          // rps * buildSec paths are warm at cutover.
+          if (e.priming.paths > 0 && e.priming.rps > 0 && e.buildSec > 0) {
+            const startSec = Math.max(e.atSec, done - e.priming.paths / e.priming.rps);
+            const primed = Math.min(e.priming.paths, e.priming.rps * e.buildSec);
             this.primings.push({
-              startSec: done,
-              endSec: done + e.priming.paths / e.priming.rps,
+              startSec,
+              endSec: done,
               rps: e.priming.rps,
-              paths: e.priming.paths,
+              paths: primed,
             });
+            this.primeAtCutover.push({ at: done, keys: primed });
           }
           break;
         }
@@ -141,6 +150,7 @@ export class EventTimeline implements IEventTimeline {
       coldReset: false,
       primingRps: 0,
       primingPaths: 0,
+      primeKeysAtCutover: 0,
       revalidations: 0,
     };
     if (!this.hasEvents) return out;
@@ -205,6 +215,12 @@ export class EventTimeline implements IEventTimeline {
       if (at >= t - 2e-6 * dt && at < t + dt - 2e-6 * dt) {
         out.coldReset = true;
         apply(LAYER_IDX.launch, 1);
+      }
+    }
+
+    for (const pc of this.primeAtCutover) {
+      if (pc.at >= t - 2e-6 * dt && pc.at < t + dt - 2e-6 * dt) {
+        out.primeKeysAtCutover = Math.max(out.primeKeysAtCutover, pc.keys);
       }
     }
 

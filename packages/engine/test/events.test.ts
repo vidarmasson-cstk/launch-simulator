@@ -26,6 +26,7 @@ describe('EventTimeline', () => {
       coldReset: false,
       primingRps: 0,
       primingPaths: 0,
+      primeKeysAtCutover: 0,
       revalidations: 0,
     });
   });
@@ -95,24 +96,42 @@ describe('EventTimeline', () => {
     expect(at(tl, 101).coldReset).toBe(false);
   });
 
-  it('deploy purges launch at build end and primes for paths/rps seconds', () => {
+  it('deploy purges launch at build end; priming window ends at cutover', () => {
     const tl = make([
       { kind: 'deploy', atSec: 100, buildSec: 50, priming: { paths: 100, rps: 20 } },
     ]);
+    // 100/20 = 5 s window [145, 150)
+    expect(at(tl, 144).primingRps).toBe(0);
+    expect(at(tl, 145).primingRps).toBe(20);
+    expect(at(tl, 145).primingPaths).toBe(100);
+    expect(at(tl, 149).primingRps).toBe(20);
     expect(at(tl, 149).coldReset).toBe(false);
+    expect(at(tl, 149).primeKeysAtCutover).toBe(0);
     const e = at(tl, 150);
     expect(e.coldReset).toBe(true);
     expect(e.purges).toEqual([{ layer: 'launch', fraction: 1 }]);
-    expect(e.primingRps).toBe(20);
-    expect(e.primingPaths).toBe(100);
-    expect(at(tl, 151).coldReset).toBe(false);
-    expect(at(tl, 154).primingRps).toBe(20);
-    expect(at(tl, 155).primingRps).toBe(0); // 100/20 = 5 s window
+    expect(e.primingRps).toBe(0);
+    expect(e.primeKeysAtCutover).toBe(100);
+    expect(at(tl, 151).primeKeysAtCutover).toBe(0);
+  });
+
+  it('priming that is slower than the build starts at atSec and is capped by rps * buildSec', () => {
+    const tl = make([
+      { kind: 'deploy', atSec: 100, buildSec: 10, priming: { paths: 1000, rps: 20 } },
+    ]);
+    expect(at(tl, 99).primingRps).toBe(0);
+    expect(at(tl, 100).primingRps).toBe(20);
+    expect(at(tl, 100).primingPaths).toBe(200);
+    expect(at(tl, 109).primingRps).toBe(20);
+    const e = at(tl, 110);
+    expect(e.primingRps).toBe(0);
+    expect(e.primeKeysAtCutover).toBe(200); // min(1000, 20 * 10)
   });
 
   it('deploy without priming has no priming', () => {
     const tl = make([{ kind: 'deploy', atSec: 0, buildSec: 10 }]);
     expect(at(tl, 10).primingRps).toBe(0);
+    expect(at(tl, 10).primeKeysAtCutover).toBe(0);
   });
 
   describe('publish', () => {

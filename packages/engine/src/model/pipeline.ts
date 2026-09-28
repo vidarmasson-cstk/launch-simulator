@@ -296,6 +296,8 @@ export function runSimulation(scenario: Scenario, opts: RunOptions = {}): Simula
   const dataShare = new Float64Array(B);
   const binCalls = new Float64Array(B);
   const primingCache = new Map<number, Float64Array>();
+  /** Page-bin mapping of this tick's priming requests (all zero when none). */
+  const primShareArr = new Float64Array(B);
 
   const primingShare = (paths: number): Float64Array => {
     const key = Math.max(0, Math.floor(paths));
@@ -336,8 +338,9 @@ export function runSimulation(scenario: Scenario, opts: RunOptions = {}): Simula
     sNf: number,
     navs: number,
     inst: number,
+    sPrim = 0,
   ): void => {
-    const eq = sPage + sBotU + sUnc + sData * navFrac;
+    const eq = sPage + sBotU + sUnc + sPrim + sData * navFrac;
     const I = sc.scope === 'shared' ? 1 : Math.max(1, inst);
     const T = sc.ttlSec;
     const cut = (calls: number, keys: number): number => {
@@ -359,7 +362,8 @@ export function runSimulation(scenario: Scenario, opts: RunOptions = {}): Simula
         (sPage * pageShare[b]! +
           sData * navFrac * dataShare[b]! +
           sBotU * uniB[b]! +
-          sUnc * npB[b]!);
+          sUnc * npB[b]! +
+          sPrim * primShareArr[b]!);
       if (scPage && pc > 0) pc = cut(pc, nB[b]!);
       binCalls[b] = pc + clientCalls * npB[b]!;
     }
@@ -437,7 +441,7 @@ export function runSimulation(scenario: Scenario, opts: RunOptions = {}): Simula
 
   // ---- per-tick state ----
   const mixAlpha = 1 - Math.exp(-dt / MIX_TAU_SEC);
-  const ema = { page: 0, data: 0, botUnique: 0, unc: 0, notFound: 0 };
+  const ema = { page: 0, data: 0, botUnique: 0, unc: 0, notFound: 0, prim: 0 };
   let hCms = 1;
   let revUsed = 0;
   let revRejected = 0;
@@ -552,6 +556,9 @@ export function runSimulation(scenario: Scenario, opts: RunOptions = {}): Simula
           break;
       }
     }
+    // Priming fills the new deployment's cache; at cutover (after the purge) the top keys are warm
+    // in every cache domain of the Launch page layer.
+    if (fx.primeKeysAtCutover > 0 && !skipLaunchPurge) pageLayer?.prime(fx.primeKeysAtCutover);
     if (fx.coldReset && !staticMode) compute.reset();
 
     // 2. arrivals
@@ -563,8 +570,11 @@ export function runSimulation(scenario: Scenario, opts: RunOptions = {}): Simula
     const hr = humanOnly / dt;
     const ur = uniformPage / dt;
     const dataRate = (tb.data + tb.prefetch) / dt;
-    const primRate = tb.priming / dt;
-    const primShare = primRate > 0 ? primingShare(fx.primingPaths) : null;
+    // Priming: origin renders of the new deployment. They bypass the live page cache and are
+    // attributed to the top keys for CMS page calls.
+    const primCount = tb.priming;
+    if (primCount > 0) primShareArr.set(primingShare(fx.primingPaths));
+    else primShareArr.fill(0);
 
     // 3. layers (external CDN -> Launch page layer, Launch data layer)
     for (let b = 0; b < B; b++) {
@@ -574,7 +584,7 @@ export function runSimulation(scenario: Scenario, opts: RunOptions = {}): Simula
     const extRes = extLayer ? extLayer.step(tick, lamPageUser) : null;
     for (let b = 0; b < B; b++) {
       const base = extRes ? extRes.originFetchesPerBin[b]! / dt : lamPageUser[b]!;
-      lamLaunchPage[b] = base + (primShare ? primRate * primShare[b]! : 0);
+      lamLaunchPage[b] = base;
     }
     const pageRes = pageLayer ? pageLayer.step(tick, lamLaunchPage) : null;
     const dataRes = dataLayer ? dataLayer.step(tick, lamData) : null;
@@ -589,7 +599,7 @@ export function runSimulation(scenario: Scenario, opts: RunOptions = {}): Simula
     const uncCount = unc * (tb.humanPage + tb.botPage);
 
     // 4. Launch origin limiter
-    const offeredMean = pageOrigin + dataOrigin + uncCount + tb.botUnique + tb.notFound;
+    const offeredMean = pageOrigin + dataOrigin + uncCount + tb.botUnique + tb.notFound + primCount;
     const scale = sim.stochastic && offeredMean > 0 ? rng.poisson(offeredMean) / offeredMean : 1;
     const offered = offeredMean * scale;
     const ll = launchLimiter.step(tick, offered);
@@ -600,6 +610,7 @@ export function runSimulation(scenario: Scenario, opts: RunOptions = {}): Simula
     const aUnc = uncCount * scale * af;
     const aBotU = tb.botUnique * scale * af;
     const aNf = tb.notFound * scale * af;
+    const aPrim = primCount * scale * af;
 
     // 5. compute
     let cr: ComputeStepResult;
@@ -613,13 +624,15 @@ export function runSimulation(scenario: Scenario, opts: RunOptions = {}): Simula
     ema.botUnique += mixAlpha * (aBotU - ema.botUnique);
     ema.unc += mixAlpha * (aUnc - ema.unc);
     ema.notFound += mixAlpha * (aNf - ema.notFound);
-    const emaSum = ema.page + ema.data + ema.botUnique + ema.unc + ema.notFound;
+    ema.prim += mixAlpha * (aPrim - ema.prim);
+    const emaSum = ema.page + ema.data + ema.botUnique + ema.unc + ema.notFound + ema.prim;
     const kStart = emaSum > 1e-12 ? cr.started / emaSum : 0;
     const sPage = ema.page * kStart;
     const sData = ema.data * kStart;
     const sBotU = ema.botUnique * kStart;
     const sUnc = ema.unc * kStart;
     const sNf = ema.notFound * kStart;
+    const sPrim = ema.prim * kStart;
 
     // 6. CMS call generation
     const navs =
@@ -635,7 +648,7 @@ export function runSimulation(scenario: Scenario, opts: RunOptions = {}): Simula
     if (cmsActive) {
       fillShare(pageShare, pageFetch);
       fillShare(dataShare, dataFetch);
-      genCalls(sPage, sData, sBotU, sUnc, sNf, navs, cr.readyInstances);
+      genCalls(sPage, sData, sBotU, sUnc, sNf, navs, cr.readyInstances, sPrim);
       for (const e of cmsEntries) {
         const r = e.layer.step(tick, e.lam);
         e.res = r;
@@ -737,9 +750,8 @@ export function runSimulation(scenario: Scenario, opts: RunOptions = {}): Simula
       metrics.addVisitor(hitMs, extRes.blockingMisses * launchHitFrac);
       fate(extRes.blockingMisses * (1 - launchHitFrac), pFailFull);
     } else if (pageRes) {
-      const keep = pageRes.requests > 1e-12 ? Math.max(0, 1 - tb.priming / pageRes.requests) : 1;
-      metrics.addVisitor(hitMs, (pageRes.hits + pageRes.staleHits) * keep);
-      fate(pageRes.blockingMisses * keep, pFailFull);
+      metrics.addVisitor(hitMs, pageRes.hits + pageRes.staleHits);
+      fate(pageRes.blockingMisses, pFailFull);
     } else {
       fate(pageVisitors, pFailFull);
     }

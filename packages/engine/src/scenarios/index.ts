@@ -149,7 +149,7 @@ export const TEMPLATES: ScenarioTemplate[] = [
     name: 'Deploy during peak',
     category: 'publishing',
     description:
-      'A production redeploy finishes at 420 s (a 120 s build starting at 300 s) while the site serves 1500 page views/s. Launch purges the whole environment cache and compute restarts cold, with no cache priming. Every popular page misses at once: the Launch origin, the instance ramp-up and the CMS origin all take the hit together. Look at the hit ratio dip, queueing and 504s in the compute chart, and try adding priming for the top paths to the deploy event.',
+      'A production redeploy finishes at 420 s (a 120 s build starting at 300 s) while the site serves 1500 page views/s. Launch purges the whole environment cache and compute restarts cold, with no cache priming (paths: 0). Every popular page misses at once: the Launch origin, the instance ramp-up and the CMS origin all take the hit together. Look at the hit ratio dip, queueing and 504s in the compute chart, and try it with priming: setting priming paths and rps on the deploy event models Launch cache priming before cutover. The primed requests run against the new deployment during the last seconds of the build (they add Launch origin and CMS load then), and the top paths are already in the cache when traffic switches.',
     scenario: {
       name: 'Deploy during peak',
       sim: { durationSec: 900 },

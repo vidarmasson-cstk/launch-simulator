@@ -404,6 +404,41 @@ export class CacheLayer implements ICacheLayer {
     }
   }
 
+  /**
+   * Cache priming: the first `keys` keys (bins are ordered by popularity, descending) become fresh
+   * at age 0 in every domain; the last bin is primed by fraction. In a primed bin a fraction
+   * f = take / keysInBin of the empty, stale and error-cached keys moves to fresh (conservation);
+   * keys that are already fresh keep their age and pending fetches are left alone. The fresh
+   * cohort is booked in the slot of the last stepped tick (one tick short of a full TTL).
+   */
+  prime(keys: number): void {
+    const { B, Lf, Ls, Le } = this;
+    const domains = Math.max(1, this.cfg.domains);
+    let rem = keys;
+    for (let b = 0; b < B && rem > 0; b++) {
+      const nKeys = this.N[b]! / domains;
+      const take = Math.min(nKeys, rem);
+      rem -= take;
+      const f = nKeys > 0 ? Math.min(1, take / nKeys) : 0;
+      if (!(f > 0)) continue;
+      let moved = f * this.empty[b]!;
+      this.empty[b] = this.empty[b]! - moved;
+      if (Ls > 0 && this.staleSum[b]! > 0) {
+        const x = f * this.staleSum[b]!;
+        moved += x;
+        this.drainStale(b, f);
+      }
+      if (Le > 0 && this.errSum[b]! > 0) {
+        const x = f * this.errSum[b]!;
+        moved += x;
+        const base = b * Le;
+        for (let k = 0; k < Le; k++) this.err[base + k] = this.err[base + k]! * (1 - f);
+        this.errSum[b] = this.errSum[b]! - x;
+      }
+      this.addFresh(b, moved, Lf > 0 ? this.lastTick % Lf : 0);
+    }
+  }
+
   hitRatio(): number {
     return this.lastRequests > 0 ? this.lastHits / this.lastRequests : 0;
   }

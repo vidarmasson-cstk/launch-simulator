@@ -82,6 +82,8 @@ export interface ICacheLayer {
   ): void;
   /** Fraction of fresh/stale/pendingStale keys moved to empty (per bin or scalar). */
   purge(fraction: number | Float64Array): void;
+  /** Mark the top `keys` keys (bins in p-descending order, partial last bin) fresh at age 0. */
+  prime(keys: number): void;
   /** Instantaneous (fresh + stale) / requests, for display. */
   hitRatio(): number;
   state(): CacheLayerState;
@@ -211,9 +213,15 @@ export interface EventEffects {
   purges: { layer: 'launch' | 'cmsPage' | 'cmsList' | 'cmsGlobal'; fraction: number }[];
   /** Cold reset of Launch caches and compute (goLive, deploy). */
   coldReset: boolean;
-  /** Priming requests per second for paths, during a deploy. */
+  /**
+   * Priming requests per second during the window that ends at deploy cutover. They are origin
+   * renders of the new deployment (they do not fill the live Launch page cache).
+   */
   primingRps: number;
+  /** Number of top keys the priming requests cover (attribution of CMS page calls). */
   primingPaths: number;
+  /** On the cutover tick: top keys of the Launch page layer that become fresh after the purge. */
+  primeKeysAtCutover: number;
   /** Revalidation calls made this tick (counts against dailyQuota). */
   revalidations: number;
 }

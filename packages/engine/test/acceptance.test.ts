@@ -43,11 +43,29 @@ describe('acceptance: architect questions (RESEARCH section 4)', () => {
     expect(high).toBeGreaterThan(low);
   });
 
-  // Observed (deploy-during-peak, priming {paths: 2000, rps: 200} vs none): priming does not lower
-  // the peak Launch origin rps (1556 vs 1366; the priming requests themselves add origin load right
-  // at cutover) nor the worst-second visitor p95 (26.7 s vs 23.5 s). It only lifts the hit ratio
-  // slightly from about 430 s on (0.57 vs 0.54 at 430 s). Kept as a todo instead of tuning the model.
-  it.todo('How much does cache priming help on a deploy at peak? (lower peak origin or worst p95)');
+  // Priming runs before cutover (origin renders of the new deployment) and warms the top keys in
+  // the Launch cache at cutover. Observed (deploy-during-peak, priming {paths: 2000, rps: 200} vs
+  // none): peak Launch origin rps after cutover 643 vs 1366; worst-second visitor p95 7.1 s vs 23.5 s.
+  it('How much does cache priming help on a deploy at peak? Lower peak origin and worst p95', () => {
+    const base = template('deploy-during-peak');
+    const primed = template('deploy-during-peak');
+    const ev = primed.events?.[0];
+    if (!ev || ev.kind !== 'deploy') throw new Error('deploy event expected');
+    ev.priming = { paths: 2000, rps: 200 };
+    const cutover = 420;
+    const peakAfter = (r: ReturnType<typeof simulate>) => {
+      const col = r.series.columns.launchOriginOffered!;
+      let m = 0;
+      for (let i = cutover; i < col.length; i++) m = Math.max(m, col[i]!);
+      return m;
+    };
+    const without = simulate(base);
+    const withPrime = simulate(primed);
+    expect(peakAfter(withPrime)).toBeLessThan(0.75 * peakAfter(without));
+    expect(withPrime.summary.worstSecondVisitorP95Ms).toBeLessThan(
+      without.summary.worstSecondVisitorP95Ms,
+    );
+  });
 
   // Which retry policy helps? Under a strict 1 s window, retries that return within the window are
   // rejected again. Observed: jittered backoff from 200 ms or 1 s gives MORE error pages than the SDK

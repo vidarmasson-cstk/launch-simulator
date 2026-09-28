@@ -55,6 +55,59 @@ describe('analyticHitRatio', () => {
   });
 });
 
+describe('CacheLayer.prime', () => {
+  const bins = [
+    { n: 10, p: 0.05 },
+    { n: 40, p: 0.01 },
+    { n: 100, p: 0.001 },
+  ];
+  const lambda = Float64Array.of(500, 400, 100);
+
+  it('makes the top bins fresh (partial last bin) and conserves fractions', () => {
+    const layer = new CacheLayer(cfg({ ttlSec: 60, swrSec: 30, domains: 2 }), bins);
+    layer.purge(1);
+    layer.prime(30); // bin 0 fully, bin 1 by 20/40
+    expect(layer.binState(0).fresh).toBeCloseTo(1, 9);
+    expect(layer.binState(1).fresh).toBeCloseTo(0.5, 9);
+    expect(layer.binState(2).fresh).toBe(0);
+    expectConserved(layer, 3);
+    const st = layer.state();
+    expect(st.fresh).toBeCloseTo((10 + 20) / 150, 9);
+  });
+
+  it('moves stale and error-cached keys into fresh too', () => {
+    const layer = new CacheLayer(
+      cfg({ ttlSec: 5, swrSec: 60, cacheErrors: { ttlSec: 30 } }),
+      bins,
+    );
+    layer.warm(lambda, 3600);
+    for (let t = 1; t < 80; t++) tickOnce(layer, t, new Float64Array(3), 0.1, 0.5); // ages into stale
+    expect(layer.binState(0).stale).toBeGreaterThan(0.1);
+    layer.prime(10);
+    const s0 = layer.binState(0);
+    expect(s0.fresh + s0.pending + s0.pendingStale).toBeCloseTo(1, 9);
+    expect(layer.binState(0).stale).toBeLessThan(1e-9);
+    expect(layer.binState(2).stale).toBeGreaterThan(0.1);
+    expectConserved(layer, 3);
+  });
+
+  it('primed keys are hits right away and expire after the ttl', () => {
+    const layer = new CacheLayer(cfg({ ttlSec: 5 }), bins);
+    layer.purge(1);
+    layer.prime(150);
+    const r = layer.step(1, lambda);
+    expect(r.hits / r.requests).toBeGreaterThan(0.99);
+    for (let t = 2; t < 5 / DT + 5; t++) layer.step(t, new Float64Array(3));
+    expect(layer.binState(0).fresh).toBeLessThan(1e-9);
+  });
+
+  it('prime(0) is a no-op', () => {
+    const layer = new CacheLayer(cfg(), bins);
+    layer.prime(0);
+    expect(layer.state().fresh).toBe(0);
+  });
+});
+
 describe('CacheLayer', () => {
   it('conserves fractions under random steps, purges and completions', () => {
     let seed = 12345;

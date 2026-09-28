@@ -53,8 +53,12 @@ const SPIKY = {
     cacheHeaders: { page: { cacheable: true, sMaxAgeSec: 120, swrSec: 0, staleIfErrorSec: 0 } },
   },
   launch: ENTERPRISE,
-  // Assumption: the customer's CMS entries carry a finite CDN TTL, so misses continue in steady state.
-  cms: { cdn: { ttlSec: 1800 } },
+  // An active editorial team: one background publish per minute keeps purging CMS keys.
+  steady: {
+    publishesPerHour: 60,
+    entriesPerPublish: 5,
+    purge: { pageQueries: true, contentTypeLists: true, referencingFraction: 0.05, globals: false },
+  },
   sdk: { retry: { kind: 'sdkDefault', retries: 5, baseDelayMs: 300, capDelayMs: 10000 } },
   events: [
     { kind: 'spike', atSec: 200, durationSec: 20, multiplier: 3, rampSec: 2 },
@@ -115,8 +119,11 @@ export const TEMPLATES: ScenarioTemplate[] = [
         pages: 5000,
         locales: 3,
         framework: 'nextjs-app',
-        frameworkOverrides: { clientNavFraction: 0, prefetchPerView: 0 },
-        cacheHeaders: { page: { cacheable: true, sMaxAgeSec: 3600, swrSec: 86400, staleIfErrorSec: 0 } },
+        // Per-card fetches (N+1): 12 calls per render, within the 5-140 range seen in cases.
+        frameworkOverrides: { clientNavFraction: 0, prefetchPerView: 0, n1Calls: 6 },
+        cacheHeaders: {
+          page: { cacheable: true, sMaxAgeSec: 3600, swrSec: 86400, staleIfErrorSec: 0 },
+        },
       },
       launch: { ...ENTERPRISE },
       events: [
@@ -126,7 +133,12 @@ export const TEMPLATES: ScenarioTemplate[] = [
           entries: 500,
           spreadSec: 0,
           locales: 'all',
-          purge: { pageQueries: true, contentTypeLists: true, referencingFraction: 0.3, globals: true },
+          purge: {
+            pageQueries: true,
+            contentTypeLists: true,
+            referencingFraction: 0.3,
+            globals: true,
+          },
           onPublish: 'revalidatePaths',
         },
       ],
@@ -150,7 +162,9 @@ export const TEMPLATES: ScenarioTemplate[] = [
         locales: 3,
         framework: 'nextjs-app',
         frameworkOverrides: { clientNavFraction: 0, prefetchPerView: 0 },
-        cacheHeaders: { page: { cacheable: true, sMaxAgeSec: 600, swrSec: 3600, staleIfErrorSec: 0 } },
+        cacheHeaders: {
+          page: { cacheable: true, sMaxAgeSec: 600, swrSec: 3600, staleIfErrorSec: 0 },
+        },
       },
       launch: { ...ENTERPRISE },
       events: [{ kind: 'deploy', atSec: 300, buildSec: 120, priming: { paths: 0, rps: 0 } }],
@@ -175,7 +189,9 @@ export const TEMPLATES: ScenarioTemplate[] = [
         localeZipfAlpha: 0.5,
         framework: 'nextjs-app',
         frameworkOverrides: { clientNavFraction: 0, prefetchPerView: 0 },
-        cacheHeaders: { page: { cacheable: true, sMaxAgeSec: 3600, swrSec: 86400, staleIfErrorSec: 0 } },
+        cacheHeaders: {
+          page: { cacheable: true, sMaxAgeSec: 3600, swrSec: 86400, staleIfErrorSec: 0 },
+        },
       },
       launch: { ...ENTERPRISE },
       events: [
@@ -202,7 +218,9 @@ export const TEMPLATES: ScenarioTemplate[] = [
         locales: 3,
         framework: 'nextjs-app',
         frameworkOverrides: { clientNavFraction: 0, prefetchPerView: 0 },
-        cacheHeaders: { page: { cacheable: true, sMaxAgeSec: 3600, swrSec: 86400, staleIfErrorSec: 0 } },
+        cacheHeaders: {
+          page: { cacheable: true, sMaxAgeSec: 3600, swrSec: 86400, staleIfErrorSec: 0 },
+        },
       },
       launch: { plan: 'standard', originLimitRps: 200 },
       events: [
@@ -235,7 +253,9 @@ export const TEMPLATES: ScenarioTemplate[] = [
         locales: 3,
         framework: 'nextjs-app',
         frameworkOverrides: { prefetchPerView: 5, clientNavFraction: 0.7, dataCacheable: false },
-        cacheHeaders: { page: { cacheable: true, sMaxAgeSec: 3600, swrSec: 86400, staleIfErrorSec: 0 } },
+        cacheHeaders: {
+          page: { cacheable: true, sMaxAgeSec: 3600, swrSec: 86400, staleIfErrorSec: 0 },
+        },
       },
       launch: { ...ENTERPRISE },
     },
@@ -264,8 +284,16 @@ export const TEMPLATES: ScenarioTemplate[] = [
         ...ENTERPRISE,
         externalCdn: { enabled: true, ttlSec: 60, cachesErrors: true, errorTtlSec: 300 },
       },
-      // Assumption: finite CMS CDN TTL so that a traffic spike brings CMS origin misses.
-      cms: { cdn: { ttlSec: 3600 } },
+      steady: {
+        publishesPerHour: 60,
+        entriesPerPublish: 5,
+        purge: {
+          pageQueries: true,
+          contentTypeLists: true,
+          referencingFraction: 0.05,
+          globals: false,
+        },
+      },
       sdk: {
         retry: { kind: 'sdkDefault', retries: 5, baseDelayMs: 300, capDelayMs: 10000 },
         onFinalFailure: 'render404',
@@ -283,7 +311,6 @@ export const TEMPLATES: ScenarioTemplate[] = [
       name: 'Strict window, spiky load',
       ...JSON.parse(JSON.stringify(SPIKY)),
       cms: {
-        cdn: { ttlSec: 1800 },
         cda: { limitRps: 100, algorithm: 'fixedWindow', burstMultiplierPct: 100, maxWaitMs: 0 },
       },
     },
@@ -299,7 +326,6 @@ export const TEMPLATES: ScenarioTemplate[] = [
       name: 'Burst-aware GCRA, spiky load',
       ...JSON.parse(JSON.stringify(SPIKY)),
       cms: {
-        cdn: { ttlSec: 1800 },
         cda: { limitRps: 100, algorithm: 'gcra', burstMultiplierPct: 200, maxWaitMs: 3000 },
       },
     },
@@ -323,11 +349,22 @@ export const TEMPLATES: ScenarioTemplate[] = [
         locales: 4,
         framework: 'nextjs-app',
         frameworkOverrides: { clientNavFraction: 0, prefetchPerView: 0 },
-        cacheHeaders: { page: { cacheable: true, sMaxAgeSec: 300, swrSec: 600, staleIfErrorSec: 0 } },
+        cacheHeaders: {
+          page: { cacheable: true, sMaxAgeSec: 300, swrSec: 600, staleIfErrorSec: 0 },
+        },
       },
       launch: { ...ENTERPRISE },
-      // Assumption: a finite CMS CDN TTL keeps a baseline of production misses on the shared budget.
-      cms: { cdn: { ttlSec: 1800 }, otherOrgTrafficRps: 5 },
+      cms: { otherOrgTrafficRps: 5 },
+      steady: {
+        publishesPerHour: 60,
+        entriesPerPublish: 5,
+        purge: {
+          pageQueries: true,
+          contentTypeLists: true,
+          referencingFraction: 0.05,
+          globals: false,
+        },
+      },
       events: [{ kind: 'otherTraffic', atSec: 300, durationSec: 300, rps: 60 }],
     },
   },

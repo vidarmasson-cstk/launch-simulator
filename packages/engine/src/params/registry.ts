@@ -335,15 +335,16 @@ export const PARAMS: ParamMeta[] = [
   ),
   input('sdk.onFinalFailure', 'Behaviour on final CMS failure', 'enum'),
 
-  // steady (analytic-only)
-  input('steady.publishesPerHour', 'Publishes per hour (steady state)', 'publishes/h', {
+  // background publishing (analytic average + evenly spaced timeline publishes)
+  input('steady.publishesPerHour', 'Background publishes per hour', 'publishes/h', {
     min: 0,
     step: 1,
   }),
-  input('steady.entriesPerPublish', 'Entries per publish (steady state)', 'entries', {
+  input('steady.entriesPerPublish', 'Entries per background publish', 'entries', {
     min: 0,
     step: 1,
   }),
+  input('steady.inTimeline', 'Include background publishes in timeline', 'bool'),
   input('steady.purge.pageQueries', 'Purge: page queries', 'bool'),
   input('steady.purge.contentTypeLists', 'Purge: content-type lists', 'bool'),
   input('steady.purge.referencingFraction', 'Purge: referencing fraction', 'fraction', {

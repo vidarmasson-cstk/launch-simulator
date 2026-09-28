@@ -220,3 +220,15 @@ describe('EventTimeline', () => {
     expect(hits).toHaveLength(1);
   });
 });
+
+describe('EventTimeline tick alignment', () => {
+  it('fires an instant event on the tick that starts at atSec, not one tick early', () => {
+    const scenario = ScenarioSchema.parse({ events: [{ kind: 'goLive', atSec: 300 }] });
+    const tl = new EventTimeline(scenario);
+    const dt = 0.1;
+    const fired = [2999, 3000, 3001].map(
+      (tick) => tl.effectsAt({ tick, dtSec: dt, timeSec: tick * dt }).coldReset,
+    );
+    expect(fired).toEqual([false, true, false]);
+  });
+});

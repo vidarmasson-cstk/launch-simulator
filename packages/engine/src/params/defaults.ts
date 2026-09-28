@@ -9,7 +9,7 @@ export const DEFAULTS = {
   name: 'Untitled scenario',
   sim: { durationSec: 1800, dtSec: 0.1, seed: 1, stochastic: true, burstiness: null, warmHistorySec: 3600 },
   traffic: {
-    baseEdgeRps: 100,
+    baseEdgeRps: 40,
     profile: 'flat',
     bots: { share: 0.1, randomQueryFraction: 0.1, notFoundFraction: 0.05, zipfAlpha: 0.2 },
   },
@@ -67,6 +67,7 @@ export const DEFAULTS = {
   steady: {
     publishesPerHour: 2,
     entriesPerPublish: 1,
+    inTimeline: true,
     purge: { pageQueries: true, contentTypeLists: true, referencingFraction: 0, globals: false },
   },
 } as const;

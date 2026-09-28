@@ -217,10 +217,14 @@ const SdkSchema = z.object({
   onFinalFailure: z.enum(['error500', 'render404', 'renderStale']).default(D.sdk.onFinalFailure),
 });
 
-/** Steady-state-only inputs (used by the analytic model, not the timeline). */
+/**
+ * Background publishing: routine editorial publishes. Used as an average rate by the analytic model
+ * and, when `inTimeline`, as evenly spaced publish events (CMS purges only) in the timeline.
+ */
 const SteadySchema = z.object({
   publishesPerHour: z.number().min(0).default(D.steady.publishesPerHour),
   entriesPerPublish: z.number().min(0).default(D.steady.entriesPerPublish),
+  inTimeline: z.boolean().default(D.steady.inTimeline),
   purge: PurgeScopeSchema.default(D.steady.purge),
 });
 

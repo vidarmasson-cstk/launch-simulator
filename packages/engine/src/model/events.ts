@@ -100,7 +100,24 @@ export class EventTimeline implements IEventTimeline {
         }
       }
     }
-    this.hasEvents = scenario.events.length > 0;
+    // Background publishing: evenly spaced publishes that purge CMS caches only (no Launch
+    // revalidation), first one at half an interval.
+    const bg = scenario.steady;
+    if (bg.inTimeline && bg.publishesPerHour > 0 && bg.entriesPerPublish > 0) {
+      const interval = 3600 / bg.publishesPerHour;
+      for (let at = interval / 2; at < scenario.sim.durationSec; at += interval) {
+        this.publishes.push({
+          kind: 'publish',
+          atSec: at,
+          entries: bg.entriesPerPublish,
+          spreadSec: 0,
+          locales: 'all',
+          purge: bg.purge,
+          onPublish: 'none',
+        });
+      }
+    }
+    this.hasEvents = scenario.events.length > 0 || this.publishes.length > 0;
   }
 
   private localesFactor(p: Publish): number {
@@ -108,8 +125,10 @@ export class EventTimeline implements IEventTimeline {
   }
 
   effectsAt(ctx: TickContext): EventEffects {
-    const t = ctx.timeSec;
     const dt = ctx.dtSec;
+    // Shift by a tiny epsilon so float error in tick * dt never fires an instant event one tick early
+    // (e.g. 2999 * 0.1 = 299.90000000000003 must not own the window containing t = 300).
+    const t = ctx.timeSec + dt * 1e-6;
     const out: EventEffects = {
       trafficMultiplier: 1,
       crawlerRps: 0,
@@ -126,7 +145,7 @@ export class EventTimeline implements IEventTimeline {
     };
     if (!this.hasEvents) return out;
 
-    for (const s of this.spikes) out.trafficMultiplier *= spikeMultiplier(s, t);
+    for (const s of this.spikes) out.trafficMultiplier *= spikeMultiplier(s, ctx.timeSec);
 
     let cw = 0;
     let rq = 0;
@@ -177,13 +196,13 @@ export class EventTimeline implements IEventTimeline {
     };
 
     for (const at of this.goLives) {
-      if (t <= at && at < t + dt) {
+      if (at >= t - 2e-6 * dt && at < t + dt - 2e-6 * dt) {
         out.coldReset = true;
         for (let i = 0; i < 4; i++) apply(i, 1);
       }
     }
     for (const at of this.deployCompletions) {
-      if (t <= at && at < t + dt) {
+      if (at >= t - 2e-6 * dt && at < t + dt - 2e-6 * dt) {
         out.coldReset = true;
         apply(LAYER_IDX.launch, 1);
       }
@@ -193,7 +212,7 @@ export class EventTimeline implements IEventTimeline {
       const end = p.atSec + p.spreadSec;
       let entries: number;
       if (p.spreadSec <= 0) {
-        entries = t <= p.atSec && p.atSec < t + dt ? p.entries : 0;
+        entries = p.atSec >= t - 2e-6 * dt && p.atSec < t + dt - 2e-6 * dt ? p.entries : 0;
       } else {
         const overlap = Math.min(t + dt, end) - Math.max(t, p.atSec);
         entries = overlap > 0 ? (p.entries * overlap) / p.spreadSec : 0;
@@ -203,8 +222,11 @@ export class EventTimeline implements IEventTimeline {
       const pageKeyFrac = (entries * lf) / this.pagesTotalKeys;
       const refs = p.purge.referencingFraction;
 
-      if (p.purge.pageQueries) apply(LAYER_IDX.cmsPage, pageKeyFrac + refs);
-      else if (refs > 0) apply(LAYER_IDX.cmsPage, refs);
+      // Referencing queries: a share `refs` of all page queries over the whole publish, spread across
+      // its ticks so a long spread doesn't compound refs once per tick.
+      const refsTick = refs > 0 ? 1 - Math.pow(1 - Math.min(refs, 1), entries / p.entries) : 0;
+      if (p.purge.pageQueries) apply(LAYER_IDX.cmsPage, pageKeyFrac + refsTick);
+      else if (refsTick > 0) apply(LAYER_IDX.cmsPage, refsTick);
       if (p.purge.contentTypeLists) {
         const affected = Math.min(
           this.cms.contentTypes,
@@ -214,14 +236,14 @@ export class EventTimeline implements IEventTimeline {
       }
       if (p.purge.globals) apply(LAYER_IDX.cmsGlobal, 1);
 
-      const firstTick = t <= p.atSec && p.atSec < t + dt;
+      const firstTick = p.atSec >= t - 2e-6 * dt && p.atSec < t + dt - 2e-6 * dt;
       switch (p.onPublish) {
         case 'revalidatePaths':
           apply(LAYER_IDX.launch, pageKeyFrac);
           out.revalidations += entries;
           break;
         case 'revalidateTags':
-          apply(LAYER_IDX.launch, pageKeyFrac + refs);
+          apply(LAYER_IDX.launch, pageKeyFrac + refsTick);
           if (firstTick) out.revalidations += 1;
           break;
         default:

@@ -78,6 +78,14 @@ This repository is public and ships only publicly documented values as defaults.
 
 Keys are parameter paths from the registry (`packages/engine/src/params/registry.ts`); unknown paths are rejected. Never commit a private preset: `presets/private/` and `*.private.json` are gitignored.
 
+## Recording a demo video
+
+`npm run demo:record` builds the web app, serves it, and records a captioned walkthrough with Playwright. The walkthrough covers the request path, a bulk-publish template, a timeline run, findings, apply & compare, and an instant what-if. It writes `demo/launch-simulator-demo.webm`, and also an `.mp4` if `ffmpeg` is on your `PATH` (or `FFMPEG=/path/to/ffmpeg` is set). The captions quote numbers read from the page, so re-recording after UI or model changes keeps them accurate.
+
+- One-time setup: `npx playwright install chromium`.
+- To record an app that's already running (e.g. `npm run dev -w @launch-sim/web`), use `DEMO_URL=http://localhost:5173 npm run demo:record`.
+- `demo/` is gitignored. The script is `scripts/demo/record-demo.mjs`.
+
 ## Deploying on Contentstack Launch
 
 The build is a static site. On Launch, configure it as a static site: framework preset "Other" (or static), build command `npm run build -w @launch-sim/web`, output directory `apps/web/dist`. Check the current Launch documentation for the exact fields.
@@ -100,6 +108,7 @@ Compute behaviour (concurrency, scaling, cold starts) is an editable assumption.
 packages/engine/   pure TypeScript model, Zod schema, parameter registry, templates, findings (Vitest)
 apps/web/          Vite + React UI: editor, charts, compare, findings
 docs/              RESEARCH.md and DESIGN.md
+scripts/demo/      Playwright recorder for the demo video (npm run demo:record)
 ```
 
 - [docs/RESEARCH.md](docs/RESEARCH.md): public limits, framework behaviour and the questions the tool should answer.

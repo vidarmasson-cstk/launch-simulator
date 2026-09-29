@@ -8,3 +8,5 @@ coverage/
 # Private parameter presets (internal-only values) must never be committed
 presets/private/
 *.private.json
+# Demo recordings (npm run demo:record)
+/demo/
